@@ -1,0 +1,6 @@
+{
+  "name": "MoSaFa Shop POS",
+  "description": "আপনার দোকান, আপনার হিসাব। Independent bilingual Shop POS and management system with separate shop authentication, multi-shop support, custom branding, and 6-digit secure PIN architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
