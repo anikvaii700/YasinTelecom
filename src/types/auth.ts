@@ -50,6 +50,9 @@ export interface Shop {
   receiptFormat: '58mm' | '80mm' | 'a4';
   brandColor: string; // Hex color e.g. #059669
   welcomeText?: string;
+  negativeStockPolicy?: 'allow' | 'block';
+  defaultVatRate?: number;
+  paymentMethodsConfig?: string[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -110,7 +113,14 @@ export interface AuditLog {
     | 'SHOP_UPDATED'
     | 'LOGO_UPDATED'
     | 'LOGO_REMOVED'
-    | 'SHOP_SWITCHED';
+    | 'SHOP_SWITCHED'
+    | 'SALE_CREATED'
+    | 'SALE_CANCELLED'
+    | 'STOCK_ADJUSTED'
+    | 'EXPENSE_RECORDED'
+    | 'EMPLOYEE_PERMISSIONS_CHANGED'
+    | 'RETURN_PROCESSED'
+    | (string & {});
   details: Record<string, unknown>;
   createdAt: string;
 }

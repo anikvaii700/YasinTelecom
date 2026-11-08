@@ -781,6 +781,7 @@ export const AuthTestLab: React.FC<AuthTestLabProps> = ({ isOpen, onClose }) => 
               product: testProd,
               quantity: 3,
               unitPrice: 350,
+              originalPrice: 350,
               costPrice: 200,
               discount: 0,
               total: 1050,

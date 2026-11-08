@@ -21,6 +21,16 @@ import { CustomerManager } from './components/customers/CustomerManager';
 import { SupplierManager } from './components/suppliers/SupplierManager';
 import { PurchaseManager } from './components/purchases/PurchaseManager';
 import { POSTerminal } from './components/pos/POSTerminal';
+import { CashbookManager } from './components/cashbook/CashbookManager';
+import { ExpenseManager } from './components/expenses/ExpenseManager';
+import { SalesReturnManager } from './components/returns/SalesReturnManager';
+import { ReportsDashboard } from './components/reports/ReportsDashboard';
+import { EmployeeManager } from './components/employees/EmployeeManager';
+import { ImeiManager } from './components/imei/ImeiManager';
+import { WarrantyManager } from './components/warranty/WarrantyManager';
+import { TelecomManager } from './components/telecom/TelecomManager';
+import { BarcodeManager } from './components/barcodes/BarcodeManager';
+import { AuditLogViewer } from './components/audit/AuditLogViewer';
 
 function MainApp() {
   const { currentShop, isLoading } = useAuth();
@@ -75,6 +85,26 @@ function MainApp() {
 
       {currentModule === 'suppliers' && <SupplierManager />}
 
+      {currentModule === 'cashbook' && <CashbookManager />}
+
+      {currentModule === 'expenses' && <ExpenseManager />}
+
+      {currentModule === 'returns' && <SalesReturnManager />}
+
+      {currentModule === 'reports' && <ReportsDashboard />}
+
+      {currentModule === 'employees' && <EmployeeManager />}
+
+      {currentModule === 'imei' && <ImeiManager />}
+
+      {currentModule === 'warranty' && <WarrantyManager />}
+
+      {currentModule === 'telecom' && <TelecomManager />}
+
+      {currentModule === 'barcodes' && <BarcodeManager />}
+
+      {currentModule === 'audit' && <AuditLogViewer />}
+
       {currentModule === 'settings' && <ShopSettings />}
 
       {currentModule !== 'dashboard' &&
@@ -84,6 +114,16 @@ function MainApp() {
         currentModule !== 'purchases' &&
         currentModule !== 'customers' &&
         currentModule !== 'suppliers' &&
+        currentModule !== 'cashbook' &&
+        currentModule !== 'expenses' &&
+        currentModule !== 'returns' &&
+        currentModule !== 'reports' &&
+        currentModule !== 'employees' &&
+        currentModule !== 'imei' &&
+        currentModule !== 'warranty' &&
+        currentModule !== 'telecom' &&
+        currentModule !== 'barcodes' &&
+        currentModule !== 'audit' &&
         currentModule !== 'settings' && (
           <ModulePlaceholder
             moduleKey={currentModule}

@@ -24,6 +24,9 @@ import {
   verifyCurrentSession,
 } from '../services/storage';
 import { initializeShopInventoryDefaults } from '../services/inventoryStorage';
+import { initializeShopFinanceDefaults } from '../services/financeStorage';
+import { initializeShopEmployees } from '../services/employeeStorage';
+import { initializeSpecializedDefaults } from '../services/specializedStorage';
 
 interface AuthContextType {
   currentShop: Shop | null;
@@ -70,6 +73,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const sessionData = await verifyCurrentSession();
         if (sessionData) {
           initializeShopInventoryDefaults(sessionData.shop.id);
+          initializeShopFinanceDefaults(sessionData.shop.id, sessionData.shop.shopCode);
+          initializeShopEmployees(sessionData.shop.id, sessionData.profile.fullName || sessionData.shop.name, sessionData.profile.mobileNumber);
+          initializeSpecializedDefaults(sessionData.shop.id);
           setCurrentShop(sessionData.shop);
           setCurrentProfile(sessionData.profile);
           setCurrentMember(sessionData.member);
@@ -99,6 +105,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pin: data.pin,
       category: data.category,
     });
+    initializeShopInventoryDefaults(res.shop.id);
+    initializeShopFinanceDefaults(res.shop.id, res.shop.shopCode);
+    initializeShopEmployees(res.shop.id, res.shop.name, res.profile.mobileNumber);
+    initializeSpecializedDefaults(res.shop.id);
     setCurrentShop(res.shop);
     setCurrentProfile(res.profile);
     const list = getShopsByOwnerPhone(res.profile.mobileNumber);
@@ -118,6 +128,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pin,
       rememberDevice,
     });
+    initializeShopInventoryDefaults(res.shop.id);
+    initializeShopFinanceDefaults(res.shop.id, res.shop.shopCode);
+    initializeShopEmployees(res.shop.id, res.shop.name, res.profile.mobileNumber);
+    initializeSpecializedDefaults(res.shop.id);
     setCurrentShop(res.shop);
     setCurrentProfile(res.profile);
     const list = getShopsByOwnerPhone(res.profile.mobileNumber);

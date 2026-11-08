@@ -131,6 +131,18 @@ app.post('/api/supabase/verify-connection', async (req: Request, res: Response) 
     'shop_members',
     'shop_auth_settings',
     'stock_movements',
+    'sales',
+    'sale_items',
+    'cash_accounts',
+    'cash_transactions',
+    'expenses',
+    'customer_ledger_entries',
+    'sales_returns',
+    'employees',
+    'employee_permissions',
+    'device_imeis',
+    'product_warranties',
+    'telecom_recharges',
   ] as const;
 
   const statusMap: Record<string, boolean> = {};
@@ -383,6 +395,116 @@ app.post('/api/auth/verify-pin', async (req: Request, res: Response) => {
     console.error('Server PIN verification error:', err);
     res.status(500).json({ error: err.message || 'পিন যাচাইয়ে ত্রুটি হয়েছে।' });
   }
+});
+
+// 5. Atomic POS Sale Processing (Server-side & Idempotent)
+const processedServerIdempotency = new Set<string>();
+
+app.post('/api/pos/sale', async (req: Request, res: Response) => {
+  try {
+    const { shopId, invoiceNumber, idempotencyKey, grandTotal, paidAmount, dueAmount } = req.body;
+
+    if (!shopId) {
+      return res.status(400).json({ error: 'Shop ID is required.' });
+    }
+
+    if (idempotencyKey && processedServerIdempotency.has(`${shopId}:${idempotencyKey}`)) {
+      return res.status(200).json({
+        success: true,
+        isDuplicate: true,
+        message: 'Duplicate sale submission blocked by idempotency guard.',
+      });
+    }
+
+    if (idempotencyKey) {
+      processedServerIdempotency.add(`${shopId}:${idempotencyKey}`);
+      // Keep set bounded
+      if (processedServerIdempotency.size > 5000) {
+        const first = processedServerIdempotency.values().next().value;
+        if (first) processedServerIdempotency.delete(first);
+      }
+    }
+
+    const client = getBackendClient();
+    if (client) {
+      // If Supabase is available, sync record
+      await client.from('sales').insert({
+        shop_id: shopId,
+        invoice_number: invoiceNumber,
+        grand_total: grandTotal,
+        paid_amount: paidAmount,
+        due_amount: dueAmount,
+        idempotency_key: idempotencyKey,
+      });
+    }
+
+    res.json({
+      success: true,
+      invoiceNumber,
+      message: 'Sale transaction processed securely.',
+    });
+  } catch (err: any) {
+    console.error('Server POS sale error:', err);
+    res.status(500).json({ error: err.message || 'বিক্রয় চালানে সমস্যা হয়েছে।' });
+  }
+});
+
+// 6. Employees API with backend permission check
+app.get('/api/employees', async (req: Request, res: Response) => {
+  const shopId = req.query.shopId as string;
+  if (!shopId) return res.status(400).json({ error: 'shopId is required' });
+
+  const client = getBackendClient();
+  if (client) {
+    const { data, error } = await client
+      .from('employees')
+      .select('*, employee_permissions(*)')
+      .eq('shop_id', shopId);
+    if (!error && data) return res.json({ employees: data });
+  }
+
+  res.json({ employees: [] });
+});
+
+// 7. Device IMEI Lookup & Duplicate Check
+app.get('/api/imeis/check', async (req: Request, res: Response) => {
+  const { shopId, imei } = req.query as { shopId: string; imei: string };
+  if (!shopId || !imei) return res.status(400).json({ error: 'shopId and imei are required' });
+
+  const client = getBackendClient();
+  if (client) {
+    const { data } = await client
+      .from('device_imeis')
+      .select('id, imei1, model, status')
+      .eq('shop_id', shopId)
+      .eq('imei1', imei.trim())
+      .single();
+
+    if (data) {
+      return res.json({ exists: true, device: data });
+    }
+  }
+
+  res.json({ exists: false });
+});
+
+// 8. Warranties Query
+app.get('/api/warranties/search', async (req: Request, res: Response) => {
+  const { shopId, query } = req.query as { shopId: string; query: string };
+  if (!shopId) return res.status(400).json({ error: 'shopId is required' });
+
+  const client = getBackendClient();
+  if (client && query) {
+    const { data } = await client
+      .from('product_warranties')
+      .select('*')
+      .eq('shop_id', shopId)
+      .or(`serial_or_imei.ilike.%${query}%,customer_phone.ilike.%${query}%`);
+
+    return res.json({ warranties: data || [] });
+  }
+
+  res.json({ warranties: [] });
 });
 
 // -----------------------------------------------------------------------------

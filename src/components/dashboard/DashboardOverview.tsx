@@ -23,11 +23,17 @@ import {
   AlertTriangle,
   ShoppingBag,
   Users,
+  RefreshCw,
+  BarChart3,
+  UserCheck,
+  Smartphone,
+  Scan,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useToast } from '../../context/ToastContext';
 import { getInventoryValuation, getPurchasesByShop } from '../../services/inventoryStorage';
+import { getFinancialSummary, getCashAccountsByShop } from '../../services/financeStorage';
 import { getCategoryInfo } from '../../utils/categories';
 import { formatBDPhoneDisplay } from '../../utils/phone';
 
@@ -49,6 +55,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const categoryInfo = getCategoryInfo(currentShop.category);
   const valuation = getInventoryValuation(currentShop.id);
   const purchases = getPurchasesByShop(currentShop.id);
+  const financial = getFinancialSummary(currentShop.id);
+  const cashAccounts = getCashAccountsByShop(currentShop.id);
+  const totalLiquidBalance = cashAccounts.reduce((sum, a) => sum + (a.isActive ? a.currentBalance : 0), 0);
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(currentShop.shopCode);
@@ -118,6 +127,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <span>POS টার্মিনাল</span>
             </button>
             <button
+              onClick={() => onNavigate('cashbook')}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-sm text-xs font-semibold transition-all border border-white/20"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>ক্যাশ খাতা</span>
+            </button>
+            <button
               onClick={() => onNavigate('settings')}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-sm text-xs font-semibold transition-all border border-white/20"
             >
@@ -139,7 +155,94 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         <div className="absolute -right-10 -bottom-10 w-64 h-64 rounded-full bg-white/5 pointer-events-none" />
       </div>
 
-      {/* 2. Key Retail Metric Counters (Live from Step 2 Inventory) */}
+      {/* 2. Step 3 Financial Health & Accurate Profit Breakdown */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-emerald-600" />
+            <span>আর্থিক হিসাব ও লাভ-ক্ষতি (Financial Metrics)</span>
+          </h2>
+          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full">
+            সঠিক ডেসিমাল গণনা
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Net Sales */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+              <span className="text-xs font-semibold">নিট বিক্রয় (Net Sales)</span>
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <Receipt className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-2xl font-bold font-mono text-slate-900 dark:text-slate-100 tabular-nums">
+                ৳{financial.netSales.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                ডিসকাউন্ট ও ফেরত পরবর্তী
+              </span>
+            </div>
+          </div>
+
+          {/* Gross Profit */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+              <span className="text-xs font-semibold">মোট লাভ (Gross Profit)</span>
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-2xl font-bold font-mono text-emerald-600 tabular-nums">
+                ৳{financial.grossProfit.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              </div>
+              <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold mt-1 block">
+                মার্জিন: {financial.grossProfitMarginPercent}% (বিক্রয় - COGS)
+              </span>
+            </div>
+          </div>
+
+          {/* Total Liquid Cash Balance */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+              <span className="text-xs font-semibold">নগদ ও ওয়ালেট ব্যালেন্স</span>
+              <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                <Wallet className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-2xl font-bold font-mono text-teal-600 tabular-nums">
+                ৳{totalLiquidBalance.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                {cashAccounts.length} টি সক্রিয় অ্যাকাউন্টে জমা
+              </span>
+            </div>
+          </div>
+
+          {/* Customer Due vs Received */}
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+              <span className="text-xs font-semibold">বকেয়া বাকি (Customer Due)</span>
+              <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-2xl font-bold font-mono text-rose-600 tabular-nums">
+                ৳{financial.totalDueReceivable.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                আদায়কৃত নগদ: ৳{financial.totalCashReceived.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Key Retail Stock Counters */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Unique Products */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
@@ -225,7 +328,115 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            {/* Shortcut 1: Products (Step 2 Active) */}
+            {/* Shortcut 1: POS Terminal (Step 3 Active) */}
+            <button
+              onClick={() => onNavigate('pos')}
+              className="p-4 rounded-2xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 hover:border-emerald-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-sm">
+                    <Receipt className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-600 text-white">
+                    সক্রিয় POS (Step 3)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-emerald-600 transition-colors">
+                  POS টার্মিনাল ও বিক্রয়
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  বারকোড স্ক্যানার, আইটেম/কার্ট ডিসকাউন্ট, স্প্লিট পেমেন্ট ও ইনভয়েস প্রিন্ট।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                <span>বিক্রয় স্ক্রিন চালু করুন</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 2: Cashbook & Multi-Account (Step 3 Active) */}
+            <button
+              onClick={() => onNavigate('cashbook')}
+              className="p-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-white dark:bg-slate-900 hover:border-teal-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 flex items-center justify-center">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-200">
+                    সক্রিয় (Step 3)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-teal-600 transition-colors">
+                  ক্যাশ খাতা ও অ্যাকাউন্ট
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  ক্যাশ ইন/আউট, ব্যাংক/বিকাশ/নগদ ব্যালেন্স, অভ্যন্তরীণ ফান্ড ট্রান্সফার ও ক্লোজিং।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-teal-600">
+                <span>ক্যাশ খাতা দেখুন</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 3: Expense Manager (Step 3 Active) */}
+            <button
+              onClick={() => onNavigate('expenses')}
+              className="p-4 rounded-2xl border border-rose-200 dark:border-rose-800 bg-white dark:bg-slate-900 hover:border-rose-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 flex items-center justify-center">
+                    <ShoppingBag className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200">
+                    সক্রিয় (Step 3)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-rose-600 transition-colors">
+                  খরচ খাতা (Expense Manager)
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  দোকান ভাড়া, বিদ্যুৎ, বেতন ও পরিবহন খরচের রিয়েলটাইম ভাউচার ও হিসাব।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-rose-600">
+                <span>খরচের হিসাব দেখুন</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 4: Returns & Exchanges (Step 3 Active) */}
+            <button
+              onClick={() => onNavigate('returns')}
+              className="p-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-900 hover:border-amber-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 flex items-center justify-center">
+                    <RefreshCw className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
+                    সক্রিয় (Step 3)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-amber-600 transition-colors">
+                  পণ্য ফেরত ও রিটার্ন
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  চালান অনুসন্ধান, আংশিক রিটার্ন ভ্যালিডেশন, স্টক পুনরুদ্ধার ও রিফান্ড।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-amber-600">
+                <span>রিটার্ন ম্যানেজার খুলুন</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 5: Products (Step 2 Active) */}
             <button
               onClick={() => onNavigate('products')}
               className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-500 text-left transition-all group flex flex-col justify-between shadow-sm"
@@ -235,8 +446,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 flex items-center justify-center">
                     <Boxes className="w-4 h-4" />
                   </div>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
-                    সক্রিয় (Step 2)
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    Step 2
                   </span>
                 </div>
                 <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-blue-600 transition-colors">
@@ -252,7 +463,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </div>
             </button>
 
-            {/* Shortcut 2: Inventory (Step 2 Active) */}
+            {/* Shortcut 6: Inventory (Step 2 Active) */}
             <button
               onClick={() => onNavigate('inventory')}
               className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-500 text-left transition-all group flex flex-col justify-between shadow-sm"
@@ -262,8 +473,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center">
                     <Warehouse className="w-4 h-4" />
                   </div>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
-                    সক্রিয় (Step 2)
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    Step 2
                   </span>
                 </div>
                 <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-emerald-600 transition-colors">
@@ -333,7 +544,115 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </div>
             </button>
 
-            {/* Shortcut 5: Shop Branding Settings (Active in Step 1) */}
+            {/* Shortcut 7: Reports & Analytics (Step 4 Active) */}
+            <button
+              onClick={() => onNavigate('reports')}
+              className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:border-indigo-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 flex items-center justify-center">
+                    <BarChart3 className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-200">
+                    সক্রিয় (Step 4)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 transition-colors">
+                  রিপোর্ট ও অ্যানালিটিক্স
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  দৈনিক/মাসিক বিক্রয়, লাভ-ক্ষতি, COGS, ও PDF/Excel এক্সপোর্ট।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-indigo-600">
+                <span>রিপোর্ট ড্যাশবোর্ড খুলুন</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 8: Employee RBAC (Step 4 Active) */}
+            <button
+              onClick={() => onNavigate('employees')}
+              className="p-4 rounded-2xl border border-cyan-200 dark:border-cyan-800 bg-white dark:bg-slate-900 hover:border-cyan-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 flex items-center justify-center">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-200">
+                    সক্রিয় (Step 4)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-cyan-600 transition-colors">
+                  কর্মচারী ও পারমিশন (RBAC)
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  ক্যাশিয়ার, ম্যানেজার ও একাউন্ট্যান্ট নিয়োগ এবং অ্যাক্টিভিটি লগ।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-cyan-600">
+                <span>টিম পরিচালনা করুন</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 9: Mobile IMEI & Warranty (Step 4 Active) */}
+            <button
+              onClick={() => onNavigate('imei')}
+              className="p-4 rounded-2xl border border-purple-200 dark:border-purple-800 bg-white dark:bg-slate-900 hover:border-purple-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 flex items-center justify-center">
+                    <Smartphone className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-200">
+                    সক্রিয় (Step 4)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-purple-600 transition-colors">
+                  মোবাইল শপ IMEI ও ওয়ারেন্টি
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  ১৫-সংখ্যার IMEI ট্র্যাকিং, হ্যান্ডসেট মডেল ও ওয়ারেন্টি কার্ড প্রিন্ট।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-purple-600">
+                <span>IMEI ট্র্যাকার খুলুন</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 10: Barcode Label Maker (Step 4 Active) */}
+            <button
+              onClick={() => onNavigate('barcodes')}
+              className="p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 hover:border-emerald-500 text-left transition-all group flex flex-col justify-between shadow-sm"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center">
+                    <Scan className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
+                    সক্রিয় (Step 4)
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-emerald-600 transition-colors">
+                  বারকোড জেনারেটর ও প্রিন্ট
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  থার্মাল স্টিকার ও A4 শীটে পণ্যের বারকোড তৈরি ও প্রিন্ট।
+                </p>
+              </div>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                <span>বারকোড স্টিকার প্রিন্ট</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* Shortcut 11: Shop Settings (Active in Step 1) */}
             <button
               onClick={() => onNavigate('settings')}
               className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-500 text-left transition-all group flex flex-col justify-between shadow-sm"
@@ -343,8 +662,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center">
                     <Settings className="w-4 h-4" />
                   </div>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
-                    সক্রিয় (Step 1)
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    সেটিংস
                   </span>
                 </div>
                 <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-emerald-600 transition-colors">

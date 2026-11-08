@@ -21,6 +21,7 @@ import {
   Phone,
   Mail,
   MapPin,
+  Hash,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -29,6 +30,8 @@ import { BusinessCategory, Shop } from '../../types/auth';
 import { BUSINESS_CATEGORIES, getCategoryInfo } from '../../utils/categories';
 import { PinInput } from '../auth/PinInput';
 import { validateShopPin } from '../../utils/pin';
+import { getInvoiceConfig, saveInvoiceConfig } from '../../services/financeStorage';
+import { InvoiceConfig } from '../../types/finance';
 
 const BRAND_PALETTES = [
   { name: 'Emerald Green', hex: '#059669', bgClass: 'bg-emerald-600' },
@@ -44,7 +47,7 @@ export const ShopSettings: React.FC = () => {
   const { t, language, setLanguage } = useLanguage();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'branding' | 'receipt' | 'security'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'branding' | 'receipt' | 'invoice' | 'security'>('general');
   const [formData, setFormData] = useState<Partial<Shop>>({
     name: currentShop?.name || '',
     category: currentShop?.category || 'general_store',
@@ -61,6 +64,17 @@ export const ShopSettings: React.FC = () => {
     welcomeText: currentShop?.welcomeText || '',
     logoUrl: currentShop?.logoUrl || '',
   });
+
+  // Invoice configuration state
+  const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig>(() =>
+    currentShop ? getInvoiceConfig(currentShop.id) : {
+      prefix: 'MS',
+      format: 'PREFIX-YEAR-SEQ',
+      currentSequence: 101,
+      padding: 6,
+    }
+  );
+  const [isSavingInvoice, setIsSavingInvoice] = useState(false);
 
   // Fit style for logo
   const [logoFit, setLogoFit] = useState<'contain' | 'cover' | 'circle'>('contain');
@@ -165,6 +179,35 @@ export const ShopSettings: React.FC = () => {
     }
   };
 
+  const handleSaveInvoiceConfig = () => {
+    if (!currentShop) return;
+    setIsSavingInvoice(true);
+    try {
+      saveInvoiceConfig(currentShop.id, invoiceConfig);
+      showToast({
+        type: 'success',
+        title: 'ইনভয়েস কনফিগারেশন সংরক্ষিত হয়েছে',
+        message: `প্রিফিক্স: ${invoiceConfig.prefix}`,
+      });
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'কনফিগারেশন সংরক্ষণে সমস্যা হয়েছে',
+      });
+    } finally {
+      setIsSavingInvoice(false);
+    }
+  };
+
+  const previewInvoiceNumber = () => {
+    const year = new Date().getFullYear();
+    const seqStr = String(invoiceConfig.currentSequence || 1).padStart(invoiceConfig.padding || 6, '0');
+    if (invoiceConfig.format === 'PREFIX-SEQ') {
+      return `${invoiceConfig.prefix || 'MS'}-${seqStr}`;
+    }
+    return `${invoiceConfig.prefix || 'MS'}-${year}-${seqStr}`;
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
       {/* Page Header */}
@@ -179,13 +222,13 @@ export const ShopSettings: React.FC = () => {
         </div>
 
         <button
-          onClick={handleSaveGeneralOrBranding}
-          disabled={isSaving}
+          onClick={activeTab === 'invoice' ? handleSaveInvoiceConfig : handleSaveGeneralOrBranding}
+          disabled={isSaving || isSavingInvoice}
           className="self-start sm:self-auto flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm transition-all"
           style={{ backgroundColor: formData.brandColor || '#059669' }}
         >
           <Save className="w-4 h-4" />
-          <span>{isSaving ? t('loading') : t('saveChanges')}</span>
+          <span>{isSaving || isSavingInvoice ? t('loading') : t('saveChanges')}</span>
         </button>
       </div>
 
@@ -225,6 +268,18 @@ export const ShopSettings: React.FC = () => {
         >
           <Receipt className="w-4 h-4" />
           <span>{t('receiptTab')}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('invoice')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            activeTab === 'invoice'
+              ? 'border-emerald-600 text-emerald-600 dark:border-emerald-500 dark:text-emerald-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <Hash className="w-4 h-4" />
+          <span>ইনভয়েস কনফিগারেশন</span>
         </button>
 
         <button
@@ -376,6 +431,47 @@ export const ShopSettings: React.FC = () => {
               <option value="bn">বাংলা (Bengali - Default)</option>
               <option value="en">English</option>
             </select>
+          </div>
+
+          {/* Negative Stock Policy */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              নেগেটিভ স্টক নীতি (Negative Stock Policy)
+            </label>
+            <select
+              value={formData.negativeStockPolicy || 'allow'}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  negativeStockPolicy: e.target.value as 'allow' | 'block',
+                })
+              }
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+            >
+              <option value="allow">স্টক ০ হলেও বিক্রি চালু রাখুন (সতর্কবার্তা সহ)</option>
+              <option value="block">স্টক ০ হলে বিক্রয় সম্পূর্ণ ব্লক করুন (সুরক্ষিত)</option>
+            </select>
+          </div>
+
+          {/* Default VAT / Tax Rate */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              ডিফল্ট ভ্যাট / ট্যাক্স হার (%)
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={formData.defaultVatRate ?? 0}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  defaultVatRate: parseFloat(e.target.value) || 0,
+                })
+              }
+              placeholder="0"
+              className="w-full px-3.5 py-2.5 text-sm font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+            />
           </div>
         </div>
       )}
@@ -717,7 +813,188 @@ export const ShopSettings: React.FC = () => {
         </div>
       )}
 
-      {/* ---------------- 4. SECURITY & PIN TAB ---------------- */}
+      {/* ---------------- 4. INVOICE CONFIGURATION TAB ---------------- */}
+      {activeTab === 'invoice' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Hash className="w-4 h-4 text-emerald-600" />
+                <span>স্বতন্ত্র ইনভয়েস নাম্বারিং কনফিগারেশন</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                আপনার দোকানের প্রতিটি বিক্রির জন্য অনন্য ও ধারাবাহিক ইনভয়েস/মেমো নাম্বার ফরম্যাট নির্ধারণ করুন।
+              </p>
+            </div>
+
+            {/* Prefix */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                ইনভয়েস প্রিফিক্স (Prefix)
+              </label>
+              <input
+                type="text"
+                maxLength={8}
+                value={invoiceConfig.prefix}
+                onChange={(e) =>
+                  setInvoiceConfig({
+                    ...invoiceConfig,
+                    prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''),
+                  })
+                }
+                placeholder="যেমন: MS, INV, TRD"
+                className="w-full px-3.5 py-2.5 text-sm font-mono uppercase rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+              />
+              <span className="text-[11px] text-slate-400">
+                সর্বোচ্চ ৮ অক্ষর (ইংরেজি বর্ণ বা সংখ্যা)।
+              </span>
+            </div>
+
+            {/* Numbering Format */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                ইনভয়েস ফরম্যাট কাঠামো
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setInvoiceConfig({ ...invoiceConfig, format: 'PREFIX-YEAR-SEQ' })
+                  }
+                  className={`p-3.5 rounded-xl border text-left transition-all ${
+                    invoiceConfig.format === 'PREFIX-YEAR-SEQ'
+                      ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/20'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="text-xs font-bold block">বছরসহ ফরম্যাট (প্রস্তাবিত)</span>
+                  <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-300 block mt-1">
+                    {invoiceConfig.prefix || 'MS'}-{new Date().getFullYear()}-000001
+                  </span>
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    প্রতি বছর নতুন সিকোয়েন্স বা সহজে অডিটযোগ্য
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setInvoiceConfig({ ...invoiceConfig, format: 'PREFIX-SEQ' })
+                  }
+                  className={`p-3.5 rounded-xl border text-left transition-all ${
+                    invoiceConfig.format === 'PREFIX-SEQ'
+                      ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/20'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="text-xs font-bold block">সংক্ষিপ্ত ধারাবাহিক ফরম্যাট</span>
+                  <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-300 block mt-1">
+                    {invoiceConfig.prefix || 'MS'}-000001
+                  </span>
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    সরাসরি প্রিফিক্স ও সংখ্যা সিকোয়েন্স
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zero Padding & Next Sequence */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  সংখ্যার দৈর্ঘ্য (Padding Digits)
+                </label>
+                <div className="flex gap-2">
+                  {[4, 5, 6, 7].map((digits) => (
+                    <button
+                      key={digits}
+                      type="button"
+                      onClick={() => setInvoiceConfig({ ...invoiceConfig, padding: digits })}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
+                        invoiceConfig.padding === digits
+                          ? 'border-emerald-600 bg-emerald-600 text-white'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-400'
+                      }`}
+                    >
+                      {digits} ডিজিট
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  পরবর্তী মেমো ক্রম (Current Sequence)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={invoiceConfig.currentSequence}
+                  onChange={(e) =>
+                    setInvoiceConfig({
+                      ...invoiceConfig,
+                      currentSequence: Math.max(1, parseInt(e.target.value) || 1),
+                    })
+                  }
+                  className="w-full px-3.5 py-2 text-sm font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleSaveInvoiceConfig}
+                disabled={isSavingInvoice}
+                className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSavingInvoice ? 'সংরক্ষণ হচ্ছে...' : 'ইনভয়েস সেটিংস সংরক্ষণ করুন'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Live Invoice Badge Preview */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-emerald-400">লাইভ ইনভয়েস প্রিভিউ</span>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono">
+                  অনন্য ডুপ্লিকেটরোধী
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 text-center space-y-2">
+                <span className="text-[11px] text-slate-400">পরবর্তী বিক্রয়ে প্রিন্ট হবে:</span>
+                <div className="text-2xl sm:text-3xl font-extrabold font-mono tracking-wider text-emerald-400 select-all">
+                  {previewInvoiceNumber()}
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-400 space-y-1.5 border-t border-slate-800 pt-3">
+                <div className="flex justify-between">
+                  <span>দোকানের কোড:</span>
+                  <span className="font-mono text-white">{currentShop.shopCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>নির্ধারিত প্রিফিক্স:</span>
+                  <span className="font-mono text-white">{invoiceConfig.prefix}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>সিরিজ লেন্থ:</span>
+                  <span className="font-mono text-white">{invoiceConfig.padding} ডিজিট প্যাডিং</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>ডাবল-ক্লিক সুরক্ষা:</span>
+                  <span className="text-emerald-400 font-semibold">Idempotency Guard সক্রিয়</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- 5. SECURITY & PIN TAB ---------------- */}
       {activeTab === 'security' && (
         <div className="max-w-lg mx-auto bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-6">
           <div className="flex items-center gap-3">

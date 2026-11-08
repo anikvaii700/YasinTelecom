@@ -27,6 +27,11 @@ import {
   ChevronRight,
   X,
   Layers,
+  Truck,
+  PercentCircle,
+  HelpCircle,
+  Calculator,
+  UserPlus,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../../context/AuthContext';
@@ -41,9 +46,14 @@ import {
   saveHoldCart,
   deleteHoldCart,
 } from '../../services/inventoryStorage';
+import { getCashAccountsByShop } from '../../services/financeStorage';
 import { Product, Category, Customer } from '../../types/inventory';
-import { CartItem, HoldCart, POSPaymentMethod, Sale, SaleItem } from '../../types/pos';
+import { CartItem, HoldCart, POSPaymentMethod, Sale, SaleItem, SplitPaymentDetail } from '../../types/pos';
+import { CashAccount } from '../../types/finance';
 import { ReceiptModal } from './ReceiptModal';
+import { QuickCustomerModal } from './QuickCustomerModal';
+import { SplitPaymentModal } from './SplitPaymentModal';
+import { PriceEditModal } from './PriceEditModal';
 
 export const POSTerminal: React.FC = () => {
   const { currentShop, currentProfile } = useAuth();
@@ -54,6 +64,7 @@ export const POSTerminal: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [holdCarts, setHoldCarts] = useState<HoldCart[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
 
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,23 +74,34 @@ export const POSTerminal: React.FC = () => {
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [cartDiscount, setCartDiscount] = useState<number>(0);
-  const [discountType, setDiscountType] = useState<'fixed' | 'percent'>('fixed');
-  const [discountValue, setDiscountValue] = useState<string>('0');
-  const [vatRate, setVatRate] = useState<number>(0); // 0% by default in Bangladesh retail unless configured
+  const [cartDiscountType, setCartDiscountType] = useState<'fixed' | 'percent'>('fixed');
+  const [cartDiscountValue, setCartDiscountValue] = useState<string>('0');
+  const [vatRate, setVatRate] = useState<number>(0); // 0% by default in Bangladesh retail
+  const [shippingCharge, setShippingCharge] = useState<string>('0');
   const [paymentMethod, setPaymentMethod] = useState<POSPaymentMethod>('Cash');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [splitPayments, setSplitPayments] = useState<SplitPaymentDetail[]>([]);
   const [paidAmountInput, setPaidAmountInput] = useState<string>('');
   const [saleNotes, setSaleNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Per-session Idempotency Key (refreshed when cart is empty or after sale)
+  const [currentIdempotencyKey, setCurrentIdempotencyKey] = useState<string>(() => crypto.randomUUID());
 
   // Modals & Drawers
   const [isHoldDrawerOpen, setIsHoldDrawerOpen] = useState(false);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [isQuickCustomerOpen, setIsQuickCustomerOpen] = useState(false);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [editingPriceItem, setEditingPriceItem] = useState<CartItem | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [completedSaleItems, setCompletedSaleItems] = useState<SaleItem[]>([]);
+  const [showTouchKeypad, setShowTouchKeypad] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const discountInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = () => {
     if (!currentShop) return;
@@ -87,18 +109,33 @@ export const POSTerminal: React.FC = () => {
     setCategories(getCategoriesByShop(currentShop.id).filter((c) => c.isActive));
     setCustomers(getCustomersByShop(currentShop.id).filter((c) => c.isActive));
     setHoldCarts(getHoldCartsByShop(currentShop.id));
+    const accounts = getCashAccountsByShop(currentShop.id);
+    setCashAccounts(accounts);
+    if (!selectedAccountId && accounts.length > 0) {
+      const def = accounts.find((a) => a.isDefault) || accounts[0];
+      setSelectedAccountId(def.id);
+    }
   };
 
   useEffect(() => {
     loadData();
   }, [currentShop]);
 
-  // Keyboard Shortcuts (F2: Search, F8: Hold, F9: Checkout)
+  // Desktop Keyboard Shortcuts (F2: Search, F3: Quick Customer, F4: Discount, F7: Split, F8: Hold, F9: Checkout, Esc: Clear)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
         e.preventDefault();
         searchInputRef.current?.focus();
+      } else if (e.key === 'F3') {
+        e.preventDefault();
+        setIsQuickCustomerOpen(true);
+      } else if (e.key === 'F4') {
+        e.preventDefault();
+        discountInputRef.current?.focus();
+      } else if (e.key === 'F7' && cart.length > 0) {
+        e.preventDefault();
+        setIsSplitModalOpen(true);
       } else if (e.key === 'F8' && cart.length > 0) {
         e.preventDefault();
         handleHoldCart();
@@ -109,7 +146,7 @@ export const POSTerminal: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart]);
+  }, [cart, isSubmitting]);
 
   // Filtered Products
   const filteredProducts = products.filter((p) => {
@@ -155,7 +192,7 @@ export const POSTerminal: React.FC = () => {
         updated[existingIndex] = {
           ...item,
           quantity: newQty,
-          total: Number((item.unitPrice * newQty - item.discount).toFixed(2)),
+          total: Number((item.unitPrice * newQty - (item.discount || 0)).toFixed(2)),
         };
         return updated;
       }
@@ -166,6 +203,7 @@ export const POSTerminal: React.FC = () => {
         product,
         quantity: 1,
         unitPrice: product.sellingPrice,
+        originalPrice: product.sellingPrice,
         costPrice,
         discount: 0,
         total: product.sellingPrice,
@@ -174,7 +212,7 @@ export const POSTerminal: React.FC = () => {
     });
   };
 
-  // Barcode enter handler
+  // Barcode rapid scan handler
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const code = barcodeInput.trim();
@@ -215,7 +253,7 @@ export const POSTerminal: React.FC = () => {
             return {
               ...item,
               quantity: nextQty,
-              total: Number((item.unitPrice * nextQty - item.discount).toFixed(2)),
+              total: Number((item.unitPrice * nextQty - (item.discount || 0)).toFixed(2)),
             };
           }
           return item;
@@ -231,33 +269,91 @@ export const POSTerminal: React.FC = () => {
 
   // Clear Cart
   const handleClearCart = () => {
-    if (cart.length === 0) return;
     setCart([]);
     setSelectedCustomer(null);
-    setCartDiscount(0);
-    setDiscountValue('0');
+    setCartDiscountValue('0');
+    setShippingCharge('0');
     setPaidAmountInput('');
+    setSplitPayments([]);
+    setCurrentIdempotencyKey(crypto.randomUUID());
   };
 
-  // Calculations
-  const subtotal = Number(
-    cart.reduce((sum, item) => sum + item.total, 0).toFixed(2)
+  // Item Price & Item Discount update
+  const handleConfirmPriceEdit = (
+    itemId: string,
+    newPrice: number,
+    itemDiscount: number,
+    notes?: string
+  ) => {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.id === itemId) {
+          const total = Number((newPrice * item.quantity - itemDiscount).toFixed(2));
+          return {
+            ...item,
+            unitPrice: newPrice,
+            discount: itemDiscount,
+            notes,
+            total,
+          };
+        }
+        return item;
+      })
+    );
+    showToast({
+      type: 'info',
+      title: 'মূল্য আপডেট হয়েছে',
+      message: 'আইটেমের মূল্য ও ছাড় সমন্বয় করা হয়েছে।',
+    });
+  };
+
+  // Financial Calculations
+  const rawSubtotal = Number(
+    cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0).toFixed(2)
   );
 
-  const calculatedDiscount =
-    discountType === 'percent'
-      ? Number(((subtotal * (Number(discountValue) || 0)) / 100).toFixed(2))
-      : Math.min(subtotal, Number(discountValue) || 0);
+  const itemDiscountsTotal = Number(
+    cart.reduce((sum, item) => sum + (item.discount || 0), 0).toFixed(2)
+  );
 
-  const discountedSubtotal = Math.max(0, subtotal - calculatedDiscount);
+  const cartSubtotalAfterItemDiscounts = Math.max(0, rawSubtotal - itemDiscountsTotal);
+
+  const calculatedCartDiscount =
+    cartDiscountType === 'percent'
+      ? Number(((cartSubtotalAfterItemDiscounts * (Number(cartDiscountValue) || 0)) / 100).toFixed(2))
+      : Math.min(cartSubtotalAfterItemDiscounts, Number(cartDiscountValue) || 0);
+
+  const discountedSubtotal = Math.max(0, cartSubtotalAfterItemDiscounts - calculatedCartDiscount);
+
+  const numericShipping = Number(shippingCharge) || 0;
   const vatAmount = Number(((discountedSubtotal * vatRate) / 100).toFixed(2));
-  const grandTotal = Number((discountedSubtotal + vatAmount).toFixed(2));
+  const grandTotal = Number((discountedSubtotal + vatAmount + numericShipping).toFixed(2));
 
   // Paid & Change Calculations
+  const splitTotal =
+    paymentMethod === 'Split' && splitPayments.length > 0
+      ? splitPayments.reduce((s, p) => s + (p.amount || 0), 0)
+      : null;
+
   const effectivePaidAmount =
-    paidAmountInput === '' ? grandTotal : Number(paidAmountInput) || 0;
+    splitTotal !== null
+      ? splitTotal
+      : paidAmountInput === ''
+      ? grandTotal
+      : Number(paidAmountInput) || 0;
+
   const changeAmount = Math.max(0, effectivePaidAmount - grandTotal);
   const dueAmount = Math.max(0, grandTotal - effectivePaidAmount);
+
+  // Quick Cash Numpad Helpers
+  const handleAddPresetCash = (amount: number) => {
+    const current = Number(paidAmountInput) || 0;
+    setPaidAmountInput(String(current + amount));
+  };
+
+  const handleSetExactCash = () => {
+    setPaidAmountInput(String(grandTotal));
+  };
 
   // Hold Cart
   const handleHoldCart = () => {
@@ -305,9 +401,10 @@ export const POSTerminal: React.FC = () => {
     });
   };
 
-  // Checkout
-  const handleCheckout = () => {
-    if (!currentShop) return;
+  // Checkout with atomic idempotency
+  const handleCheckout = async () => {
+    if (!currentShop || isSubmitting) return;
+
     if (cart.length === 0) {
       showToast({
         type: 'warning',
@@ -321,21 +418,31 @@ export const POSTerminal: React.FC = () => {
       showToast({
         type: 'error',
         title: 'বকেয়া বিক্রয়!',
-        message: 'বাকি বা আংশিক পরিশোধে পণ্য বিক্রয় করতে হলে নির্দিষ্ট গ্রাহক নির্বাচন করতে হবে।',
+        message: 'বাকি বা আংশিক পরিশোধে বিক্রয় করতে হলে গ্রাহক নির্বাচন অথবা দ্রুত যুক্ত করতে হবে।',
       });
       setIsCustomerModalOpen(true);
       return;
     }
 
+    if (paymentMethod === 'Split' && splitPayments.length === 0) {
+      setIsSplitModalOpen(true);
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
+      // Step 1: Execute atomic local/server transaction with idempotency key
       const result = createSaleTransaction({
         shopId: currentShop.id,
         customerId: selectedCustomer?.id,
         customerName: selectedCustomer?.name,
         customerPhone: selectedCustomer?.mobileNumber,
         items: cart,
-        subtotal,
-        cartDiscount: calculatedDiscount,
+        subtotal: rawSubtotal,
+        itemDiscountsTotal,
+        cartDiscount: calculatedCartDiscount,
+        shippingCharge: numericShipping,
         vatAmount,
         vatRatePercent: vatRate,
         grandTotal,
@@ -343,19 +450,23 @@ export const POSTerminal: React.FC = () => {
         dueAmount,
         changeAmount,
         paymentMethod,
+        paymentAccountId: selectedAccountId,
+        splitPayments: paymentMethod === 'Split' ? splitPayments : undefined,
         notes: saleNotes,
         cashierName: currentProfile?.fullName || 'ক্যাশিয়ার',
+        idempotencyKey: currentIdempotencyKey,
+        actorId: currentProfile?.id,
       });
 
-      // Confetti celebration for completed sale
+      // Step 2: Confetti Celebration
       try {
         confetti({
-          particleCount: 50,
-          spread: 60,
+          particleCount: 60,
+          spread: 70,
           origin: { y: 0.8 },
         });
       } catch {
-        // confetti safe
+        // Confetti safe
       }
 
       showToast({
@@ -368,7 +479,7 @@ export const POSTerminal: React.FC = () => {
       setCompletedSaleItems(result.items);
       setIsReceiptOpen(true);
 
-      // Reset Cart for next sale & refresh products stock
+      // Step 3: Reset cart and refresh stock
       handleClearCart();
       loadData();
     } catch (err: any) {
@@ -377,6 +488,8 @@ export const POSTerminal: React.FC = () => {
         title: 'বিক্রয় ত্রুটি',
         message: err.message || 'বিক্রয় চালানে সমস্যা হয়েছে।',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -395,10 +508,10 @@ export const POSTerminal: React.FC = () => {
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="পণ্য বা SKU দিয়ে খুঁজুন... (F2)"
+                placeholder="পণ্য বা SKU দিয়ে খুঁজুন... (শর্টকাট: F2)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
               />
               {searchQuery && (
                 <button
@@ -416,10 +529,10 @@ export const POSTerminal: React.FC = () => {
               <input
                 ref={barcodeInputRef}
                 type="text"
-                placeholder="বারকোড স্ক্যান / লিখুন..."
+                placeholder="বারকোড স্ক্যান বা লিখুন..."
                 value={barcodeInput}
                 onChange={(e) => setBarcodeInput(e.target.value)}
-                className="w-full pl-9 pr-12 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 font-mono placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                className="w-full pl-9 pr-14 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-900 dark:text-slate-100 font-mono placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
               />
               <button
                 type="submit"
@@ -482,9 +595,9 @@ export const POSTerminal: React.FC = () => {
                     key={p.id}
                     onClick={() => addToCart(p)}
                     disabled={isOutOfStock}
-                    className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between group ${
+                    className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between group active:scale-[0.98] ${
                       inCart
-                        ? 'border-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-sm'
+                        ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm ring-1 ring-emerald-500/30'
                         : isOutOfStock
                         ? 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 opacity-60 cursor-not-allowed'
                         : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-400 hover:shadow-md'
@@ -537,7 +650,7 @@ export const POSTerminal: React.FC = () => {
       </div>
 
       {/* ---------------- RIGHT PANEL: CART & CHECKOUT TERMINAL ---------------- */}
-      <div className="w-full lg:w-[420px] xl:w-[460px] flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="w-full lg:w-[440px] xl:w-[480px] flex flex-col bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         {/* Cart Header */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-2">
@@ -580,7 +693,7 @@ export const POSTerminal: React.FC = () => {
           </div>
         </div>
 
-        {/* Customer Selector Bar */}
+        {/* Customer Selector & Quick Create Bar */}
         <div className="px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30 flex items-center justify-between text-xs">
           <button
             onClick={() => setIsCustomerModalOpen(true)}
@@ -607,21 +720,33 @@ export const POSTerminal: React.FC = () => {
             </div>
           </button>
 
-          {selectedCustomer ? (
-            <button
-              onClick={() => setSelectedCustomer(null)}
-              className="text-[11px] font-semibold text-rose-500 hover:underline shrink-0 ml-2"
-            >
-              বাতিল
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsCustomerModalOpen(true)}
-              className="text-[11px] font-semibold text-emerald-600 hover:underline shrink-0 ml-2"
-            >
-              গ্রাহক যুক্ত করুন +
-            </button>
-          )}
+          <div className="flex items-center gap-2 shrink-0 ml-2">
+            {selectedCustomer ? (
+              <button
+                onClick={() => setSelectedCustomer(null)}
+                className="text-[11px] font-semibold text-rose-500 hover:underline"
+              >
+                রিমুভ
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setIsCustomerModalOpen(true)}
+                  className="text-[11px] font-semibold text-emerald-600 hover:underline"
+                >
+                  খুঁজুন
+                </button>
+                <button
+                  onClick={() => setIsQuickCustomerOpen(true)}
+                  className="px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] flex items-center gap-1 hover:bg-emerald-100"
+                  title="দ্রুত নতুন গ্রাহক যুক্ত করুন (F3)"
+                >
+                  <UserPlus className="w-3 h-3" />
+                  <span>নতুন (F3)</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Cart Items List */}
@@ -647,9 +772,24 @@ export const POSTerminal: React.FC = () => {
                     {language === 'bn' ? item.product.nameBn : (item.product.nameEn || item.product.nameBn)}
                   </h5>
                   <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 font-mono">
-                    <span>৳{item.unitPrice.toFixed(2)}</span>
+                    {/* Clickable price to open PriceEditModal */}
+                    <button
+                      onClick={() => setEditingPriceItem(item)}
+                      className="hover:text-emerald-600 underline decoration-dotted font-semibold flex items-center gap-1"
+                      title="মূল্য ও আইটেম ডিসকাউন্ট পরিবর্তন করতে ক্লিক করুন"
+                    >
+                      <span>৳{item.unitPrice.toFixed(2)}</span>
+                      {item.unitPrice !== item.originalPrice && (
+                        <span className="text-[9px] text-amber-600 font-bold">(এডিট)</span>
+                      )}
+                    </button>
                     <span>×</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">{item.quantity}</span>
+                    {item.discount > 0 && (
+                      <span className="text-emerald-600 text-[10px]">
+                        (-৳{item.discount})
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -691,38 +831,76 @@ export const POSTerminal: React.FC = () => {
 
         {/* Calculation & Payment Terminal Drawer */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 space-y-3">
-          {/* Discount & Calculations */}
+          {/* Discount, Tax, Shipping & Totals */}
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between text-slate-600 dark:text-slate-400">
               <span>সাবটোটাল:</span>
-              <span className="font-mono font-semibold">৳{subtotal.toFixed(2)}</span>
+              <span className="font-mono font-semibold">৳{rawSubtotal.toFixed(2)}</span>
             </div>
 
-            {/* Discount Row */}
+            {itemDiscountsTotal > 0 && (
+              <div className="flex justify-between text-emerald-600 font-mono">
+                <span>আইটেম ডিসকাউন্ট:</span>
+                <span>- ৳{itemDiscountsTotal.toFixed(2)}</span>
+              </div>
+            )}
+
+            {/* Invoice-Level Discount */}
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-600 dark:text-slate-400">ছাড় (Discount):</span>
+              <span className="text-slate-600 dark:text-slate-400">ইনভয়েস ছাড় (F4):</span>
               <div className="flex items-center gap-1.5">
                 <div className="flex bg-slate-200/80 dark:bg-slate-800 rounded-lg p-0.5 text-[10px] font-bold">
                   <button
-                    onClick={() => setDiscountType('fixed')}
-                    className={`px-1.5 py-0.5 rounded ${discountType === 'fixed' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs' : 'text-slate-500'}`}
+                    onClick={() => setCartDiscountType('fixed')}
+                    className={`px-1.5 py-0.5 rounded ${cartDiscountType === 'fixed' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs' : 'text-slate-500'}`}
                   >
                     ৳
                   </button>
                   <button
-                    onClick={() => setDiscountType('percent')}
-                    className={`px-1.5 py-0.5 rounded ${discountType === 'percent' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs' : 'text-slate-500'}`}
+                    onClick={() => setCartDiscountType('percent')}
+                    className={`px-1.5 py-0.5 rounded ${cartDiscountType === 'percent' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs' : 'text-slate-500'}`}
                   >
                     %
                   </button>
                 </div>
                 <input
+                  ref={discountInputRef}
                   type="number"
                   min="0"
                   placeholder="0"
-                  value={discountValue}
-                  onChange={(e) => setDiscountValue(e.target.value)}
+                  value={cartDiscountValue}
+                  onChange={(e) => setCartDiscountValue(e.target.value)}
                   className="w-16 px-2 py-0.5 text-right font-mono text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+            </div>
+
+            {/* VAT & Shipping Row */}
+            <div className="flex items-center justify-between gap-3 text-[11px] pt-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-500">ভ্যাট:</span>
+                <select
+                  value={vatRate}
+                  onChange={(e) => setVatRate(Number(e.target.value))}
+                  className="px-1.5 py-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-[11px] font-mono focus:outline-none"
+                >
+                  <option value={0}>০%</option>
+                  <option value={5}>৫%</option>
+                  <option value={7.5}>৭.৫%</option>
+                  <option value={15}>১৫%</option>
+                </select>
+                {vatAmount > 0 && <span className="font-mono text-slate-600">(৳{vatAmount})</span>}
+              </div>
+
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">ডেলিভারি/শিপিং:</span>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="০"
+                  value={shippingCharge}
+                  onChange={(e) => setShippingCharge(e.target.value)}
+                  className="w-14 px-1.5 py-0.5 text-right font-mono text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none"
                 />
               </div>
             </div>
@@ -738,36 +916,106 @@ export const POSTerminal: React.FC = () => {
             </div>
           </div>
 
-          {/* Payment Method Selector */}
-          <div className="grid grid-cols-4 gap-1.5 text-xs font-semibold">
-            {(['Cash', 'bKash', 'Nagad', 'Card'] as POSPaymentMethod[]).map((method) => (
-              <button
-                key={method}
-                onClick={() => setPaymentMethod(method)}
-                className={`py-2 rounded-xl text-center transition-all ${
-                  paymentMethod === method
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-500'
-                }`}
-              >
-                {method === 'Cash' ? 'নগদ' : method}
-              </button>
-            ))}
-          </div>
-
-          {/* Paid Cash Input & Change Return */}
-          <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-slate-500">গৃহীত টাকা (Paid):</span>
-              <input
-                type="number"
-                placeholder={grandTotal.toFixed(2)}
-                value={paidAmountInput}
-                onChange={(e) => setPaidAmountInput(e.target.value)}
-                className="w-28 px-2 py-1 text-right font-mono font-bold text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-emerald-600"
-              />
+          {/* Payment Method Selector (Cash, bKash, Nagad, Rocket, Bank, Card, Split) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+              <span>পেমেন্ট মাধ্যম:</span>
+              {paymentMethod === 'Split' && (
+                <button
+                  onClick={() => setIsSplitModalOpen(true)}
+                  className="text-emerald-600 hover:underline flex items-center gap-1"
+                >
+                  <span>স্প্লিট কনফিগার ({splitPayments.length} টি)</span>
+                </button>
+              )}
             </div>
 
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1 text-[11px] font-semibold">
+              {(['Cash', 'bKash', 'Nagad', 'Rocket', 'Bank', 'Card', 'Split'] as POSPaymentMethod[]).map(
+                (method) => (
+                  <button
+                    key={method}
+                    onClick={() => {
+                      setPaymentMethod(method);
+                      if (method === 'Split') {
+                        setIsSplitModalOpen(true);
+                      }
+                    }}
+                    className={`py-1.5 rounded-xl text-center transition-all ${
+                      paymentMethod === method
+                        ? 'bg-emerald-600 text-white shadow-sm font-bold'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-500'
+                    }`}
+                  >
+                    {method === 'Cash' ? 'নগদ' : method}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Paid Cash Input, Quick Cash Buttons & Change/Due Return */}
+          <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-500">
+                {paymentMethod === 'Split' ? 'স্প্লিট মোট পেমেন্ট:' : 'গৃহীত টাকা (Paid):'}
+              </span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  disabled={paymentMethod === 'Split'}
+                  placeholder={grandTotal.toFixed(2)}
+                  value={paymentMethod === 'Split' ? effectivePaidAmount.toFixed(2) : paidAmountInput}
+                  onChange={(e) => setPaidAmountInput(e.target.value)}
+                  className="w-28 px-2 py-1 text-right font-mono font-bold text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-emerald-600 disabled:opacity-80"
+                />
+                <button
+                  onClick={() => setShowTouchKeypad(!showTouchKeypad)}
+                  className="p-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800"
+                  title="টাচ কিপ্যাড খুলুন"
+                >
+                  <Calculator className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Preset Cash Buttons */}
+            {paymentMethod !== 'Split' && (
+              <div className="flex items-center gap-1 overflow-x-auto text-[10px] font-mono font-bold pt-1">
+                <button
+                  onClick={handleSetExactCash}
+                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
+                >
+                  পুরো টাকা
+                </button>
+                <button
+                  onClick={() => handleAddPresetCash(50)}
+                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
+                >
+                  +৫০
+                </button>
+                <button
+                  onClick={() => handleAddPresetCash(100)}
+                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
+                >
+                  +১০০
+                </button>
+                <button
+                  onClick={() => handleAddPresetCash(500)}
+                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
+                >
+                  +৫০০
+                </button>
+                <button
+                  onClick={() => handleAddPresetCash(1000)}
+                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
+                >
+                  +১০০০
+                </button>
+              </div>
+            )}
+
+            {/* Due or Change Display */}
             <div className="flex justify-between text-xs pt-1 border-t border-slate-100 dark:border-slate-700/60 font-mono">
               {dueAmount > 0 ? (
                 <>
@@ -783,7 +1031,7 @@ export const POSTerminal: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Buttons: Hold Cart (F8) & Complete Sale (F9) */}
+          {/* Action Buttons: Hold Cart (F8), Clear, & Complete Sale (F9) */}
           <div className="flex items-center gap-2 pt-1">
             <button
               onClick={handleHoldCart}
@@ -797,10 +1045,10 @@ export const POSTerminal: React.FC = () => {
 
             <button
               onClick={handleCheckout}
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || isSubmitting}
               className="flex-1 py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 active:scale-[0.99]"
             >
-              <span>বিক্রয় সম্পন্ন করুন (F9)</span>
+              <span>{isSubmitting ? 'প্রসেসিং...' : 'বিক্রয় সম্পন্ন করুন (F9)'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -863,9 +1111,54 @@ export const POSTerminal: React.FC = () => {
                 </button>
               ))}
             </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                onClick={() => {
+                  setIsCustomerModalOpen(false);
+                  setIsQuickCustomerOpen(true);
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>নতুন গ্রাহক তৈরি করুন</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* ---------------- QUICK CUSTOMER CREATION MODAL ---------------- */}
+      <QuickCustomerModal
+        isOpen={isQuickCustomerOpen}
+        onClose={() => setIsQuickCustomerOpen(false)}
+        shopId={currentShop.id}
+        onCustomerCreated={(newCust) => {
+          setSelectedCustomer(newCust);
+          loadData();
+        }}
+      />
+
+      {/* ---------------- SPLIT PAYMENT MODAL ---------------- */}
+      <SplitPaymentModal
+        isOpen={isSplitModalOpen}
+        onClose={() => setIsSplitModalOpen(false)}
+        grandTotal={grandTotal}
+        cashAccounts={cashAccounts}
+        initialSplits={splitPayments}
+        onConfirm={(splits) => {
+          setSplitPayments(splits);
+          setPaymentMethod('Split');
+        }}
+      />
+
+      {/* ---------------- ITEM PRICE & DISCOUNT EDIT MODAL ---------------- */}
+      <PriceEditModal
+        isOpen={Boolean(editingPriceItem)}
+        onClose={() => setEditingPriceItem(null)}
+        item={editingPriceItem}
+        onConfirm={handleConfirmPriceEdit}
+      />
 
       {/* ---------------- HELD CARTS DRAWER ---------------- */}
       {isHoldDrawerOpen && (
@@ -929,7 +1222,7 @@ export const POSTerminal: React.FC = () => {
         </div>
       )}
 
-      {/* ---------------- THERMAL RECEIPT MODAL ---------------- */}
+      {/* ---------------- BRANDED THERMAL & A4 RECEIPT MODAL ---------------- */}
       <ReceiptModal
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}

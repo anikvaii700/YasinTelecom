@@ -30,6 +30,7 @@ import {
 } from '../../services/inventoryStorage';
 import { Customer } from '../../types/inventory';
 import { formatBDPhoneDisplay } from '../../utils/phone';
+import { CustomerLedgerModal } from './CustomerLedgerModal';
 
 export const CustomerManager: React.FC = () => {
   const { currentShop } = useAuth();
@@ -526,6 +527,17 @@ export const CustomerManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Customer Ledger Statement & Due Collection Modal */}
+      <CustomerLedgerModal
+        isOpen={Boolean(viewingCustomer)}
+        onClose={() => setViewingCustomer(null)}
+        customer={viewingCustomer}
+        shop={currentShop}
+        onPaymentSuccess={() => {
+          setRefreshKey((k) => k + 1);
+        }}
+      />
     </div>
   );
 };

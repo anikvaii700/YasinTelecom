@@ -5,9 +5,19 @@
 
 import { Product, ProductVariant } from './inventory';
 
-export type POSPaymentMethod = 'Cash' | 'bKash' | 'Nagad' | 'Card' | 'Due' | 'Split';
+export type POSPaymentMethod =
+  | 'Cash'
+  | 'bKash'
+  | 'Nagad'
+  | 'Rocket'
+  | 'Bank'
+  | 'Card'
+  | 'Other'
+  | 'Due'
+  | 'Split';
 
 export type SaleStatus = 'COMPLETED' | 'HOLD' | 'CANCELLED' | 'REFUNDED';
+export type SaleReturnStatus = 'NONE' | 'PARTIAL' | 'FULL';
 
 export interface CartItem {
   id: string; // unique cart line id
@@ -15,6 +25,7 @@ export interface CartItem {
   selectedVariant?: ProductVariant;
   quantity: number;
   unitPrice: number;
+  originalPrice: number; // to track price edits
   costPrice: number;
   discount: number; // item discount in BDT
   total: number; // (unitPrice * quantity) - discount
@@ -33,14 +44,18 @@ export interface SaleItem {
   variantName?: string;
   quantity: number;
   unitPrice: number;
+  originalPrice?: number;
   costPrice: number;
   discount: number;
   total: number;
+  returnedQuantity?: number;
   createdAt: string;
 }
 
 export interface SplitPaymentDetail {
   method: POSPaymentMethod;
+  accountId?: string;
+  accountName?: string;
   amount: number;
   referenceNumber?: string;
 }
@@ -53,7 +68,9 @@ export interface Sale {
   customerPhone?: string;
   invoiceNumber: string;
   subtotal: number;
+  itemDiscountsTotal?: number;
   cartDiscount: number;
+  shippingCharge: number;
   vatAmount: number;
   vatRatePercent: number;
   grandTotal: number;
@@ -61,12 +78,17 @@ export interface Sale {
   dueAmount: number;
   changeAmount: number;
   paymentMethod: POSPaymentMethod;
+  paymentAccountId?: string;
   splitPayments?: SplitPaymentDetail[];
   status: SaleStatus;
+  returnStatus?: SaleReturnStatus;
   itemsCount: number;
-  totalProfit: number; // grandTotal - total cost
+  totalCost: number; // Total COGS for this sale
+  totalProfit: number; // grandTotal - total cost (Gross profit)
   notes?: string;
+  cashierId?: string;
   cashierName?: string;
+  idempotencyKey?: string;
   createdAt: string;
   updatedAt: string;
 }

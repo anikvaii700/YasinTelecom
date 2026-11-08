@@ -27,6 +27,12 @@ import {
   SplitPaymentDetail,
 } from '../types/pos';
 import { addAuditLog } from './storage';
+import {
+  generateNextInvoiceNumber,
+  getCashAccountsByShop,
+  recordCashTransaction,
+  recordCustomerLedgerEntry,
+} from './financeStorage';
 
 const STORAGE_KEYS = {
   CATEGORIES: 'mosafa_pos_db_categories',
@@ -41,6 +47,7 @@ const STORAGE_KEYS = {
   SALES: 'mosafa_pos_db_sales',
   SALE_ITEMS: 'mosafa_pos_db_sale_items',
   HOLD_CARTS: 'mosafa_pos_db_hold_carts',
+  CASH_ACCOUNTS: 'mosafa_pos_db_cash_accounts',
 };
 
 function getItem<T>(key: string, defaultValue: T): T {
@@ -1035,7 +1042,9 @@ export interface CreateSaleParams {
   invoiceNumber?: string;
   items: CartItem[];
   subtotal: number;
+  itemDiscountsTotal?: number;
   cartDiscount: number;
+  shippingCharge?: number;
   vatAmount: number;
   vatRatePercent: number;
   grandTotal: number;
@@ -1043,15 +1052,22 @@ export interface CreateSaleParams {
   dueAmount: number;
   changeAmount: number;
   paymentMethod: POSPaymentMethod;
+  paymentAccountId?: string;
   splitPayments?: SplitPaymentDetail[];
   notes?: string;
   cashierName?: string;
+  idempotencyKey?: string;
   actorId?: string;
 }
 
 export function getSalesByShop(shopId: string): Sale[] {
   const all = getItem<Sale[]>(STORAGE_KEYS.SALES, []);
   return all.filter((s) => s.shopId === shopId);
+}
+
+export function getSaleById(id: string, shopId: string): Sale | null {
+  const all = getItem<Sale[]>(STORAGE_KEYS.SALES, []);
+  return all.find((s) => s.id === id && s.shopId === shopId) || null;
 }
 
 export function getSaleItemsBySale(saleId: string): SaleItem[] {
@@ -1064,12 +1080,26 @@ export function createSaleTransaction(params: CreateSaleParams): { sale: Sale; i
     throw new Error('কার্ট খালি! বিক্রয় সম্পন্ন করার জন্য অন্তত একটি পণ্য যোগ করুন।');
   }
 
+  const allSales = getItem<Sale[]>(STORAGE_KEYS.SALES, []);
+  const allSaleItems = getItem<SaleItem[]>(STORAGE_KEYS.SALE_ITEMS, []);
+
+  // 1. Idempotency Check: Prevent duplicate submissions on double-click or network retry
+  if (params.idempotencyKey) {
+    const existingSale = allSales.find(
+      (s) => s.idempotencyKey === params.idempotencyKey && s.shopId === params.shopId
+    );
+    if (existingSale) {
+      const existingItems = allSaleItems.filter((i) => i.saleId === existingSale.id);
+      return { sale: existingSale, items: existingItems };
+    }
+  }
+
   const now = new Date().toISOString();
   const allProducts = getItem<Product[]>(STORAGE_KEYS.PRODUCTS, []);
-  const invoiceNumber = params.invoiceNumber || `INV-${Date.now().toString().slice(-6)}`;
+  const invoiceNumber = params.invoiceNumber || generateNextInvoiceNumber(params.shopId);
   const saleId = crypto.randomUUID();
 
-  // 1. Stock check & deduction
+  // 2. Stock check & atomic stock deduction with immutable movement logs
   let totalCost = 0;
   for (const cartItem of params.items) {
     const prodIndex = allProducts.findIndex(
@@ -1116,7 +1146,7 @@ export function createSaleTransaction(params: CreateSaleParams): { sale: Sale; i
   // Commit updated products stock
   setItem(STORAGE_KEYS.PRODUCTS, allProducts);
 
-  // 2. Customer Update (if customer attached)
+  // 3. Customer Update & Ledger Entry (if customer attached)
   if (params.customerId) {
     const allCustomers = getItem<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
     const custIndex = allCustomers.findIndex(
@@ -1124,17 +1154,32 @@ export function createSaleTransaction(params: CreateSaleParams): { sale: Sale; i
     );
     if (custIndex !== -1) {
       const c = allCustomers[custIndex];
+      const previousDue = c.currentDue;
+      const newDue = Number((previousDue + params.dueAmount).toFixed(2));
       allCustomers[custIndex] = {
         ...c,
         totalPurchases: Number((c.totalPurchases + params.grandTotal).toFixed(2)),
-        currentDue: Number((c.currentDue + params.dueAmount).toFixed(2)),
+        currentDue: newDue,
         updatedAt: now,
       };
       setItem(STORAGE_KEYS.CUSTOMERS, allCustomers);
+
+      // Record in customer ledger
+      recordCustomerLedgerEntry({
+        shopId: params.shopId,
+        customerId: c.id,
+        entryType: 'SALE_INVOICE',
+        debit: params.dueAmount > 0 ? params.dueAmount : 0,
+        credit: 0,
+        balanceAfter: newDue,
+        invoiceNumber,
+        referenceId: saleId,
+        notes: `চালান #${invoiceNumber} (মোট: ৳${params.grandTotal}, পরিশোধ: ৳${params.paidAmount}, বাকি: ৳${params.dueAmount})`,
+      });
     }
   }
 
-  // 3. Save Sale Items
+  // 4. Save Sale Items with price snapshot and historical cost
   const saleItems: SaleItem[] = params.items.map((item) => ({
     id: crypto.randomUUID(),
     saleId,
@@ -1147,17 +1192,18 @@ export function createSaleTransaction(params: CreateSaleParams): { sale: Sale; i
     variantName: item.selectedVariant?.variantName,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
+    originalPrice: item.originalPrice || item.product.sellingPrice,
     costPrice: item.costPrice,
     discount: item.discount,
     total: item.total,
+    returnedQuantity: 0,
     createdAt: now,
   }));
 
-  const allSaleItems = getItem<SaleItem[]>(STORAGE_KEYS.SALE_ITEMS, []);
   allSaleItems.push(...saleItems);
   setItem(STORAGE_KEYS.SALE_ITEMS, allSaleItems);
 
-  // 4. Save Sale Record
+  // 5. Save Sale Record
   const totalProfit = Number((params.grandTotal - totalCost).toFixed(2));
   const newSale: Sale = {
     id: saleId,
@@ -1167,7 +1213,9 @@ export function createSaleTransaction(params: CreateSaleParams): { sale: Sale; i
     customerPhone: params.customerPhone,
     invoiceNumber,
     subtotal: params.subtotal,
+    itemDiscountsTotal: params.itemDiscountsTotal || 0,
     cartDiscount: params.cartDiscount,
+    shippingCharge: params.shippingCharge || 0,
     vatAmount: params.vatAmount,
     vatRatePercent: params.vatRatePercent,
     grandTotal: params.grandTotal,
@@ -1175,19 +1223,88 @@ export function createSaleTransaction(params: CreateSaleParams): { sale: Sale; i
     dueAmount: params.dueAmount,
     changeAmount: params.changeAmount,
     paymentMethod: params.paymentMethod,
+    paymentAccountId: params.paymentAccountId,
     splitPayments: params.splitPayments,
     status: 'COMPLETED',
+    returnStatus: 'NONE',
     itemsCount: params.items.reduce((sum, item) => sum + item.quantity, 0),
+    totalCost,
     totalProfit,
     notes: params.notes,
     cashierName: params.cashierName,
+    idempotencyKey: params.idempotencyKey,
     createdAt: now,
     updatedAt: now,
   };
 
-  const allSales = getItem<Sale[]>(STORAGE_KEYS.SALES, []);
   allSales.unshift(newSale);
   setItem(STORAGE_KEYS.SALES, allSales);
+
+  // 6. Cashbook Deposit Engine: Credit cash received into Cash/MFS/Bank accounts
+  if (params.paidAmount > 0) {
+    const cashAccounts = getCashAccountsByShop(params.shopId);
+
+    if (params.paymentMethod === 'Split' && params.splitPayments && params.splitPayments.length > 0) {
+      // Split Payments: credit each portion to its respective account
+      for (const split of params.splitPayments) {
+        if (split.amount <= 0) continue;
+        const targetAcc =
+          (split.accountId && cashAccounts.find((a) => a.id === split.accountId)) ||
+          cashAccounts.find(
+            (a) => a.type.toLowerCase() === split.method.toLowerCase() || (split.method === 'Cash' && a.type === 'CASH')
+          ) ||
+          cashAccounts.find((a) => a.isDefault) ||
+          cashAccounts[0];
+
+        if (targetAcc) {
+          targetAcc.currentBalance += split.amount;
+          targetAcc.updatedAt = now;
+          recordCashTransaction({
+            shopId: params.shopId,
+            accountId: targetAcc.id,
+            accountName: targetAcc.name,
+            transactionType: 'SALES_RECEIPT',
+            amount: split.amount,
+            balanceAfter: targetAcc.currentBalance,
+            relatedId: saleId,
+            invoiceNumber,
+            reference: split.referenceNumber,
+            notes: `বিক্রয় চালান #${invoiceNumber} (স্প্লিট পেমেন্ট - ${split.method})`,
+            actorId: params.actorId,
+          });
+        }
+      }
+      setItem(STORAGE_KEYS.CASH_ACCOUNTS, cashAccounts);
+    } else {
+      // Single payment method
+      const targetAcc =
+        (params.paymentAccountId && cashAccounts.find((a) => a.id === params.paymentAccountId)) ||
+        cashAccounts.find(
+          (a) => a.type.toLowerCase() === params.paymentMethod.toLowerCase() || (params.paymentMethod === 'Cash' && a.type === 'CASH')
+        ) ||
+        cashAccounts.find((a) => a.isDefault) ||
+        cashAccounts[0];
+
+      if (targetAcc) {
+        targetAcc.currentBalance += params.paidAmount;
+        targetAcc.updatedAt = now;
+        setItem(STORAGE_KEYS.CASH_ACCOUNTS, cashAccounts);
+
+        recordCashTransaction({
+          shopId: params.shopId,
+          accountId: targetAcc.id,
+          accountName: targetAcc.name,
+          transactionType: 'SALES_RECEIPT',
+          amount: params.paidAmount,
+          balanceAfter: targetAcc.currentBalance,
+          relatedId: saleId,
+          invoiceNumber,
+          notes: `বিক্রয় চালান #${invoiceNumber} (${params.paymentMethod})`,
+          actorId: params.actorId,
+        });
+      }
+    }
+  }
 
   addAuditLog({
     shopId: params.shopId,
@@ -1199,6 +1316,7 @@ export function createSaleTransaction(params: CreateSaleParams): { sale: Sale; i
       grandTotal: params.grandTotal,
       paidAmount: params.paidAmount,
       dueAmount: params.dueAmount,
+      method: params.paymentMethod,
     },
   });
 

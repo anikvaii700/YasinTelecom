@@ -70,6 +70,7 @@ export interface Product {
 export type StockMovementType =
   | 'PURCHASE'
   | 'SALE'
+  | 'RETURN'
   | 'ADJUSTMENT_IN'
   | 'ADJUSTMENT_OUT'
   | 'DAMAGE'

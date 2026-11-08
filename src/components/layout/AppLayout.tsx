@@ -31,6 +31,9 @@ import {
   Bell,
   Check,
   Database,
+  Smartphone,
+  Shield,
+  Scan,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -69,7 +72,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   const categoryInfo = getCategoryInfo(currentShop.category);
 
-  // Navigation Items with active status (Step 1, Step 2 & Step 3 POS terminal active)
   const navItems = [
     { id: 'dashboard', label: t('navDashboard'), icon: LayoutDashboard, step: 1, active: true },
     { id: 'pos', label: t('navPos'), icon: Receipt, step: 3, active: true },
@@ -78,11 +80,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     { id: 'purchases', label: t('navPurchases'), icon: ShoppingBag, step: 2, active: true },
     { id: 'customers', label: t('navCustomers'), icon: Users, step: 2, active: true },
     { id: 'suppliers', label: t('navSuppliers'), icon: Truck, step: 2, active: true },
-    { id: 'expenses', label: t('navExpenses'), icon: DollarSign, step: 4, active: false },
-    { id: 'cashbook', label: t('navCashbook'), icon: BookOpen, step: 4, active: false },
-    { id: 'returns', label: t('navReturns'), icon: RotateCcw, step: 5, active: false },
-    { id: 'reports', label: t('navReports'), icon: BarChart3, step: 5, active: false },
-    { id: 'employees', label: t('navEmployees'), icon: UserCheck, step: 5, active: false },
+    { id: 'expenses', label: t('navExpenses'), icon: DollarSign, step: 3, active: true },
+    { id: 'cashbook', label: t('navCashbook'), icon: BookOpen, step: 3, active: true },
+    { id: 'returns', label: t('navReturns'), icon: RotateCcw, step: 3, active: true },
+    { id: 'reports', label: t('navReports'), icon: BarChart3, step: 4, active: true },
+    { id: 'employees', label: t('navEmployees'), icon: UserCheck, step: 4, active: true },
+    { id: 'imei', label: 'IMEI ট্র্যাকিং', icon: Smartphone, step: 4, active: true },
+    { id: 'warranty', label: 'ওয়ারেন্টি', icon: Shield, step: 4, active: true },
+    { id: 'telecom', label: 'ফ্লেক্সিলোড লেজার', icon: Smartphone, step: 4, active: true },
+    { id: 'barcodes', label: 'বারকোড টুলস', icon: Scan, step: 4, active: true },
+    { id: 'audit', label: 'অডিট লগ', icon: ShieldAlert, step: 4, active: true },
     { id: 'settings', label: t('navSettings'), icon: Settings, step: 1, active: true },
   ];
 
