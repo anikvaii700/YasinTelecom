@@ -690,8 +690,8 @@ app.get('/api/subscription/plans', (req: Request, res: Response) => {
       {
         id: 'pro',
         name: 'Pro (বিজনেস)',
-        priceMonthly: 599,
-        priceYearly: 5990,
+        priceMonthly: 100,
+        priceYearly: 999,
         currency: 'BDT',
         productLimit: 5000,
         employeeLimit: 10,
@@ -711,8 +711,8 @@ app.get('/api/subscription/plans', (req: Request, res: Response) => {
       {
         id: 'enterprise',
         name: 'Enterprise (মাল্টি-ব্রাঞ্চ)',
-        priceMonthly: 1499,
-        priceYearly: 14990,
+        priceMonthly: 599,
+        priceYearly: 5990,
         currency: 'BDT',
         productLimit: -1, // Unlimited
         employeeLimit: -1,

@@ -262,16 +262,19 @@ export const SaaSVisitorLanding: React.FC<SaaSVisitorLandingProps> = ({
             {/* Pro Plan (Highlighted) */}
             <div className="p-8 bg-gradient-to-b from-sky-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-2xl border-2 border-sky-500 shadow-xl flex flex-col justify-between relative">
               <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-sky-600 to-blue-700 text-white text-xs font-bold tracking-wide uppercase shadow-sm">
-                সবচেয়ে জনপ্রিয়
+                সবচেয়ে জনপ্রিয় • মাত্র ১০০ ৳/মাস
               </div>
               <div>
                 <h3 className="text-xl font-bold text-sky-900 dark:text-sky-300">Pro (বিজনেস)</h3>
                 <p className="text-xs text-slate-500 mt-1">বিকাশমান ব্যবসার পূর্ণাঙ্গ স্বয়ংক্রিয় ম্যানেজমেন্ট</p>
                 <div className="mt-4 mb-6">
                   <span className="text-4xl font-extrabold font-mono text-sky-700 dark:text-sky-400">
-                    ৳{billingCycle === 'monthly' ? '৫৯৯' : '৫,৯৯০'}
+                    ৳{billingCycle === 'monthly' ? '১০০' : '৯৯৯'}
                   </span>
                   <span className="text-xs text-slate-400"> /{billingCycle === 'monthly' ? 'মাস' : 'বছর'}</span>
+                  <p className="text-xs text-emerald-600 font-semibold mt-1">
+                    {billingCycle === 'monthly' ? 'মাত্র প্রতি মাসে ১০০ টাকা' : 'বাৎসরিক সাশ্রয়ী অফার'}
+                  </p>
                 </div>
                 <ul className="space-y-3 text-xs text-slate-700 dark:text-slate-200">
                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-sky-600 font-bold" /> ৫,০০০টি প্রোডাক্ট লিমিট</li>
@@ -286,7 +289,7 @@ export const SaaSVisitorLanding: React.FC<SaaSVisitorLandingProps> = ({
                 onClick={onOpenSignup}
                 className="mt-8 w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm shadow-md transition-colors"
               >
-                প্রো ট্রায়াল শুরু করুন
+                প্রো প্যাকেজ নিন (১০০ ৳/মাস)
               </button>
             </div>
 
@@ -296,10 +299,13 @@ export const SaaSVisitorLanding: React.FC<SaaSVisitorLandingProps> = ({
                 <h3 className="text-xl font-bold">Enterprise (মাল্টি-ব্রাঞ্চ)</h3>
                 <p className="text-xs text-slate-500 mt-1">একাধিক শাখা ও বড় পাইকারি ডিস্ট্রিবিউশন</p>
                 <div className="mt-4 mb-6">
-                  <span className="text-4xl font-extrabold font-mono">
-                    ৳{billingCycle === 'monthly' ? '১,৪৯৯' : '১৪,৯৯০'}
+                  <span className="text-4xl font-extrabold font-mono text-slate-900 dark:text-white">
+                    ৳{billingCycle === 'monthly' ? '৫৯৯' : '৫,৯৯০'}
                   </span>
                   <span className="text-xs text-slate-400"> /{billingCycle === 'monthly' ? 'মাস' : 'বছর'}</span>
+                  <p className="text-xs text-sky-600 font-semibold mt-1">
+                    {billingCycle === 'yearly' ? 'বাৎসরিক মাত্র ৫,৯৯০ টাকা' : 'প্রতি মাসে ৫৯৯ টাকা'}
+                  </p>
                 </div>
                 <ul className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /> আনলিমিটেড প্রোডাক্ট ও সেলস</li>
@@ -312,7 +318,7 @@ export const SaaSVisitorLanding: React.FC<SaaSVisitorLandingProps> = ({
                 onClick={onOpenSignup}
                 className="mt-8 w-full py-3 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
-                যোগাযোগ করুন
+                এন্টারপ্রাইজ শুরু করুন
               </button>
             </div>
           </div>
