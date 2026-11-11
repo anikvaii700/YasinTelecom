@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#grad)" />
+  <!-- Shopping Bag / Store Icon -->
+  <path d="M160 180 V140 C160 86.98 202.98 44 256 44 C309.02 44 352 86.98 352 140 V180" fill="none" stroke="#ffffff" stroke-width="32" stroke-linecap="round" />
+  <rect x="112" y="180" width="288" height="260" rx="36" fill="#ffffff" />
+  <!-- MoSaFa M Badge in Center -->
+  <path d="M180 370 V240 L256 310 L332 240 V370" fill="none" stroke="#0284c7" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

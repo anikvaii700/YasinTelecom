@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Receipt,
@@ -34,6 +34,12 @@ import {
   Smartphone,
   Shield,
   Scan,
+  Bot,
+  FileText,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -43,6 +49,8 @@ import { getCategoryInfo } from '../../utils/categories';
 import { SignupWizard } from '../auth/SignupWizard';
 import { AuthTestLab } from '../testing/AuthTestLab';
 import { SupabaseStatusModal } from '../supabase/SupabaseStatusModal';
+import { SyncStatusModal } from '../sync/SyncStatusModal';
+import { syncEngine, type SyncEngineState } from '../../services/syncEngine';
 
 interface AppLayoutProps {
   currentModule: string;
@@ -67,6 +75,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [isTestLabOpen, setIsTestLabOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [syncState, setSyncState] = useState<SyncEngineState>({
+    status: 'online',
+    isOnline: true,
+    pendingCount: 0,
+    failedCount: 0,
+    conflictCount: 0,
+    lastSyncedAt: null,
+    activeDeviceId: ''
+  });
+
+  useEffect(() => {
+    const unsub = syncEngine.subscribe(setSyncState);
+    return () => unsub();
+  }, []);
 
   if (!currentShop) return null;
 
@@ -75,6 +98,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const navItems = [
     { id: 'dashboard', label: t('navDashboard'), icon: LayoutDashboard, step: 1, active: true },
     { id: 'pos', label: t('navPos'), icon: Receipt, step: 3, active: true },
+    { id: 'ai_agent', label: 'এআই বিজনেস এজেন্ট', icon: Bot, step: 5, active: true },
+    { id: 'studio', label: 'ডকুমেন্ট স্টুডিও', icon: FileText, step: 5, active: true },
     { id: 'products', label: t('navProducts'), icon: Boxes, step: 2, active: true },
     { id: 'inventory', label: t('navInventory'), icon: Warehouse, step: 2, active: true },
     { id: 'purchases', label: t('navPurchases'), icon: ShoppingBag, step: 2, active: true },
@@ -86,9 +111,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     { id: 'reports', label: t('navReports'), icon: BarChart3, step: 4, active: true },
     { id: 'employees', label: t('navEmployees'), icon: UserCheck, step: 4, active: true },
     { id: 'imei', label: 'IMEI ট্র্যাকিং', icon: Smartphone, step: 4, active: true },
-    { id: 'warranty', label: 'ওয়ারেন্টি', icon: Shield, step: 4, active: true },
+    { id: 'warranty', label: 'ওয়ারেন্টি সেন্টার', icon: Shield, step: 4, active: true },
     { id: 'telecom', label: 'ফ্লেক্সিলোড লেজার', icon: Smartphone, step: 4, active: true },
     { id: 'barcodes', label: 'বারকোড টুলস', icon: Scan, step: 4, active: true },
+    { id: 'backup', label: 'ডাটা ব্যাকআপ ও রিস্টোর', icon: Database, step: 5, active: true },
+    { id: 'super_admin', label: 'সুপার এডমিন', icon: ShieldCheck, step: 5, active: true },
     { id: 'audit', label: 'অডিট লগ', icon: ShieldAlert, step: 4, active: true },
     { id: 'settings', label: t('navSettings'), icon: Settings, step: 1, active: true },
   ];
@@ -246,7 +273,39 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             title="Supabase ক্লাউড স্ট্যাটাস ও সিঙ্ক"
           >
             <Database className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="hidden sm:inline">ক্লাউড সিঙ্ক</span>
+            <span className="hidden sm:inline">ক্লাউড DB</span>
+          </button>
+
+          {/* PWA & Offline Sync Status Indicator */}
+          <button
+            onClick={() => setIsSyncModalOpen(true)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+              !syncState.isOnline
+                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                : syncState.status === 'syncing'
+                ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300'
+                : syncState.pendingCount > 0
+                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+            }`}
+            title="অফলাইন ডাটাবেজ ও সিঙ্ক স্ট্যাটাস"
+          >
+            {!syncState.isOnline ? (
+              <WifiOff className="w-3.5 h-3.5 text-rose-600" />
+            ) : syncState.status === 'syncing' ? (
+              <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
+            ) : (
+              <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+            )}
+            <span className="hidden sm:inline">
+              {!syncState.isOnline
+                ? 'অফলাইন'
+                : syncState.status === 'syncing'
+                ? 'সিঙ্ক হচ্ছে'
+                : syncState.pendingCount > 0
+                ? `${syncState.pendingCount} পেন্ডিং`
+                : 'সিঙ্কড'}
+            </span>
           </button>
 
           {/* Notification Button */}
@@ -481,6 +540,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <SupabaseStatusModal
         isOpen={isSupabaseModalOpen}
         onClose={() => setIsSupabaseModalOpen(false)}
+      />
+
+      {/* Dedicated Offline & Cloud Sync Modal */}
+      <SyncStatusModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        shopId={currentShop.id}
       />
     </div>
   );

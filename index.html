@@ -2,11 +2,17 @@
 <html lang="bn">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MoSaFa Shop POS — আপনার দোকান, আপনার হিসাব</title>
-    <meta name="description" content="MoSaFa Shop POS — আপনার দোকান, আপনার হিসাব। স্বাধীন, নিরাপদ ও দ্বিভাষিক শপ ম্যানেজমেন্ট এবং পয়েন্ট অব সেল সিস্টেম।" />
-    <meta property="og:title" content="MoSaFa Shop POS — আপনার দোকান, আপনার হিসাব" />
-    <meta property="og:description" content="MoSaFa Shop POS — আপনার দোকান, আপনার হিসাব। স্বাধীন, নিরাপদ ও দ্বিভাষিক শপ ম্যানেজমেন্ট এবং পয়েন্ট অব সেল সিস্টেম।" />
+    <meta name="theme-color" content="#0284c7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="MoSaFa Shop" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-192.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
+    <title>MoSaFa Shop Manager — মাল্টি-টেন্যান্ট বিজনেস ম্যানেজমেন্ট ও পিওএস</title>
+    <meta name="description" content="MoSaFa Shop Manager (Tools.MoSaFaBD.Com) — আধুনিক মাল্টি-টেন্যান্ট ব্যবসা ব্যবস্থাপনা, অফলাইন পিওএস, ইনভেন্টরি ও এআই বিজনেস প্ল্যাটফর্ম।" />
+    <meta property="og:title" content="MoSaFa Shop Manager — Tools.MoSaFaBD.Com" />
+    <meta property="og:description" content="আধুনিক মাল্টি-টেন্যান্ট ব্যবসা ব্যবস্থাপনা, অফলাইন পিওএস, ইনভেন্টরি ও এআই বিজনেস প্ল্যাটফর্ম।" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,6 +22,16 @@
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-emerald-600 selection:text-white dark:bg-slate-950 dark:text-slate-100 min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(
+            (reg) => console.log('[MoSaFa SW] Registered successfully, scope:', reg.scope),
+            (err) => console.warn('[MoSaFa SW] Registration error:', err)
+          );
+        });
+      }
+    </script>
   </body>
 </html>
 

@@ -1,0 +1,41 @@
+{
+  "name": "MoSaFa Shop Manager — মাল্টি-টেন্যান্ট বিজনেস প্ল্যাটফর্ম",
+  "short_name": "MoSaFa Shop",
+  "description": "মাল্টি-টেন্যান্ট বিজনেস ম্যানেজমেন্ট ও স্মার্ট পিওএস প্ল্যাটফর্ম — Tools.MoSaFaBD.Com",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0284c7",
+  "theme_color": "#0284c7",
+  "orientation": "any",
+  "scope": "/",
+  "lang": "bn",
+  "categories": ["business", "finance", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "POS Terminal",
+      "short_name": "POS",
+      "url": "/?view=pos",
+      "description": "নতুন বিক্রয় ও ইনভয়েস করুন"
+    },
+    {
+      "name": "Cashbook",
+      "short_name": "হিসাব",
+      "url": "/?view=cashbook",
+      "description": "দৈনিক ক্যাশ ও লেনদেন দেখুন"
+    }
+  ]
+}

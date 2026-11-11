@@ -39,6 +39,9 @@ export interface Shop {
   slug: string;
   category: BusinessCategory;
   mobileNumber: string; // Owner phone (+8801XXXXXXXXX)
+  phone?: string;
+  ownerName?: string;
+  subscriptionPlan?: string;
   email?: string;
   address?: string;
   description?: string;
